@@ -1,0 +1,1187 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<meta name="theme-color" content="#0a0a24" />
+<title>粒子梦境 Particle Run · 双人版</title>
+<!--
+  「粒子梦境 Particle Run · 双人版」
+  ─ 请通过服务器访问：npm start 后打开 http://localhost:3000
+  ─ 两名玩家各自打开页面，一人创建房间、一人输入房间码，即可同赛道竞速
+-->
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #0a0a24; }
+  body {
+    font-family: "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
+    user-select: none; -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #game { position: fixed; inset: 0; display: block; touch-action: none; }
+  .hidden { display: none !important; }
+
+  /* ---------- HUD ---------- */
+  #hud {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 5;
+    display: flex; justify-content: space-between; align-items: flex-start;
+    padding: 14px 18px; pointer-events: none;
+  }
+  #scoreVal {
+    font-size: clamp(30px, 5vw, 42px); font-weight: 200; letter-spacing: 3px;
+    color: #f2f8ff; line-height: 1;
+    text-shadow: 0 0 14px rgba(120,210,255,.9), 0 0 40px rgba(150,110,255,.5);
+  }
+  #bestVal { font-size: 12px; color: rgba(190,205,255,.7); letter-spacing: 2px; margin-top: 6px; }
+  .hud-right { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+  .chip {
+    display: flex; align-items: center; gap: 7px;
+    padding: 8px 14px; border-radius: 999px; font-size: 13px; letter-spacing: 1px;
+    color: #dfeaff; border: 1px solid rgba(130,225,255,.35);
+    background: rgba(24,32,74,.55); box-shadow: 0 0 14px rgba(90,190,255,.18);
+  }
+  .chip .dot { width: 9px; height: 9px; border-radius: 50%; background: #57f0a8; box-shadow: 0 0 8px rgba(87,240,168,.9); }
+  .chip .dot.off { background: #8b93b8; box-shadow: none; }
+  .chip .dot.dead { background: #ff7bb0; box-shadow: 0 0 8px rgba(255,123,176,.8); }
+  .chip b { font-weight: 600; color: #fff; letter-spacing: 2px; }
+  .chip button {
+    pointer-events: auto; cursor: pointer; border: none; border-radius: 999px;
+    padding: 3px 10px; font-size: 12px; font-family: inherit; letter-spacing: 1px;
+    color: #0a0a24; background: rgba(140,225,255,.9);
+  }
+  .chipBtn {
+    pointer-events: auto; cursor: pointer; font-family: inherit;
+    padding: 8px 14px; border-radius: 999px; font-size: 13px; letter-spacing: 2px;
+    color: #ffd7d7; border: 1px solid rgba(255,140,160,.45);
+    background: rgba(80,28,52,.55); box-shadow: 0 0 12px rgba(255,120,150,.15);
+  }
+  .chipBtn:active { transform: scale(.95); }
+
+  /* ---------- 全屏覆盖层 ---------- */
+  .screen {
+    position: fixed; inset: 0; z-index: 10; text-align: center; padding: 24px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px;
+    background: rgba(8,6,30,.45); backdrop-filter: blur(2px);
+  }
+  .title-cn {
+    font-size: clamp(44px, 9vw, 78px); font-weight: 200; color: #eaf6ff;
+    letter-spacing: .32em; text-indent: .32em;
+    text-shadow: 0 0 24px rgba(120,200,255,.85), 0 0 70px rgba(150,100,255,.5);
+  }
+  .title-en {
+    font-size: clamp(14px, 2.4vw, 18px); letter-spacing: .9em; text-indent: .9em;
+    color: #ffd98a; text-shadow: 0 0 16px rgba(255,200,120,.55);
+  }
+  .over-label {
+    font-size: clamp(26px, 5vw, 38px); font-weight: 200; letter-spacing: .3em; text-indent: .3em;
+    color: #eaf0ff; text-shadow: 0 0 20px rgba(140,180,255,.7);
+  }
+  .hint { font-size: 13px; line-height: 2; color: rgba(200,210,250,.75); letter-spacing: 1px; }
+  .hint2 { font-size: 12px; color: rgba(190,200,245,.6); letter-spacing: 1px; }
+  .net-status { font-size: 13px; letter-spacing: 2px; color: #8fe8ff; }
+  .net-status.err { color: #ff9db0; }
+
+  .btn {
+    appearance: none; font-family: inherit; cursor: pointer; touch-action: manipulation;
+    padding: 13px 44px; border-radius: 999px; font-size: 17px;
+    letter-spacing: 8px; text-indent: 8px; color: #eaffff;
+    border: 1px solid rgba(130,225,255,.65);
+    background: linear-gradient(180deg, rgba(70,110,220,.35), rgba(40,60,150,.28));
+    box-shadow: 0 0 22px rgba(90,190,255,.35), inset 0 0 14px rgba(120,210,255,.12);
+    transition: transform .15s ease, box-shadow .15s ease;
+  }
+  .btn:hover  { transform: translateY(-2px); box-shadow: 0 0 30px rgba(120,210,255,.55), inset 0 0 18px rgba(140,220,255,.2); }
+  .btn:active { transform: scale(.97); }
+  .btn[disabled] { opacity: .45; pointer-events: none; }
+  .btn.gold {
+    border-color: rgba(255,215,140,.7); color: #fff6e0;
+    box-shadow: 0 0 22px rgba(255,200,110,.3), inset 0 0 14px rgba(255,220,150,.12);
+  }
+  .btn.small { padding: 9px 26px; font-size: 14px; letter-spacing: 4px; text-indent: 4px; }
+
+  .join-row { display: flex; gap: 10px; align-items: center; }
+  #codeInput {
+    width: 196px; padding: 12px 10px; text-align: center;
+    font-size: 24px; letter-spacing: 10px; text-indent: 10px; font-family: inherit;
+    color: #eaf6ff; background: rgba(18,24,60,.65);
+    border: 1px solid rgba(130,225,255,.45); border-radius: 14px;
+    outline: none; caret-color: #8fe8ff;
+  }
+  #codeInput::placeholder { color: rgba(150,170,230,.4); letter-spacing: 2px; text-indent: 2px; font-size: 15px; }
+  #codeInput:focus { border-color: rgba(160,235,255,.85); box-shadow: 0 0 18px rgba(110,210,255,.3); }
+
+  .code-big {
+    font-size: clamp(52px, 11vw, 88px); font-weight: 200; letter-spacing: .22em; text-indent: .22em;
+    color: #ffe9a8; text-shadow: 0 0 26px rgba(255,220,140,.8), 0 0 80px rgba(255,190,90,.35);
+  }
+  #countNum {
+    font-size: clamp(90px, 20vw, 180px); font-weight: 200; color: #f4faff;
+    text-shadow: 0 0 30px rgba(130,220,255,.9), 0 0 90px rgba(150,110,255,.55);
+  }
+  .pop { animation: pop .5s ease; }
+  @keyframes pop { 0% { transform: scale(1.6); opacity: .2; } 100% { transform: scale(1); opacity: 1; } }
+
+  .result-row { display: flex; gap: 18px; }
+  .result-card {
+    min-width: 158px; padding: 18px 22px; border-radius: 18px;
+    border: 1px solid rgba(130,225,255,.4); background: rgba(20,28,66,.6);
+    box-shadow: 0 0 20px rgba(90,190,255,.15);
+  }
+  .result-card.pink { border-color: rgba(255,140,210,.45); box-shadow: 0 0 20px rgba(255,130,200,.18); }
+  .result-card.win { border-color: rgba(255,225,150,.85); box-shadow: 0 0 26px rgba(255,210,120,.4); }
+  .rc-name { font-size: 13px; letter-spacing: 4px; color: rgba(200,215,250,.85); }
+  .rc-score { font-size: clamp(38px, 8vw, 56px); font-weight: 200; color: #fff; line-height: 1.25;
+    text-shadow: 0 0 18px rgba(150,220,255,.8); }
+
+  #toast {
+    position: fixed; bottom: 38px; left: 50%; transform: translateX(-50%) translateY(8px);
+    z-index: 30; padding: 10px 22px; border-radius: 999px; font-size: 14px; letter-spacing: 1px;
+    color: #eaf6ff; background: rgba(22,30,70,.85); border: 1px solid rgba(130,225,255,.45);
+    box-shadow: 0 0 18px rgba(90,190,255,.3); opacity: 0; transition: opacity .25s, transform .25s;
+    pointer-events: none; max-width: 86vw;
+  }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<canvas id="game"></canvas>
+
+<!-- 顶部 HUD -->
+<div id="hud" class="hidden">
+  <div class="hud-left">
+    <div id="scoreVal">0</div>
+    <div id="bestVal">最佳 0</div>
+  </div>
+  <div class="hud-right">
+    <div id="foeChip" class="chip hidden"><span class="dot" id="foeDot"></span><span id="foeTxt">好友</span></div>
+    <div id="codeChip" class="chip"><span id="codeTxt">------</span><button id="copyBtn">复制</button></div>
+    <button id="exitBtn" class="chipBtn">退出</button>
+  </div>
+</div>
+
+<!-- 主菜单 -->
+<div id="menuScreen" class="screen">
+  <h1 class="title-cn">粒子梦境</h1>
+  <div class="title-en">PARTICLE RUN · 双人版</div>
+  <div id="netStatus" class="net-status">连接服务器中…</div>
+  <button id="createBtn" class="btn" disabled>创 建 房 间</button>
+  <div class="join-row">
+    <input id="codeInput" maxlength="6" inputmode="numeric" autocomplete="off" placeholder="输入房间码" />
+    <button id="joinBtn" class="btn small" disabled>加 入</button>
+  </div>
+  <div id="joinMsg" class="hint2"></div>
+  <p class="hint">空格 / 鼠标点击 / 触屏 跳跃 · 长按跳更高<br>两人同一条赛道 · 收集星尘 +10 · 坠毁即出局 · 分高者获胜</p>
+</div>
+
+<!-- 等待好友大厅 -->
+<div id="lobbyScreen" class="screen hidden">
+  <div class="over-label">等待好友加入</div>
+  <div class="code-big" id="lobbyCode">------</div>
+  <button id="copyBtn2" class="btn small">复 制 房 间 码</button>
+  <p class="hint" id="lobbyHint">把六位房间码发给好友<br>好友输入后加入，双方就绪自动开赛</p>
+  <button id="cancelBtn" class="btn small gold">返 回</button>
+</div>
+
+<!-- 倒计时 -->
+<div id="countScreen" class="screen hidden">
+  <div id="countNum">3</div>
+  <div class="hint2">同一时刻起跑 · 两人赛道完全相同</div>
+</div>
+
+<!-- 我坠毁后观战 -->
+<div id="crashScreen" class="screen hidden">
+  <div class="over-label">你坠毁了</div>
+  <p class="hint" id="crashHint">观看好友继续奔跑…</p>
+</div>
+
+<!-- 结算 -->
+<div id="overScreen" class="screen hidden">
+  <div class="over-label" id="resultTitle">梦境落幕</div>
+  <div class="result-row">
+    <div class="result-card" id="cardMe"><div class="rc-name">你</div><div class="rc-score" id="rcMe">0</div></div>
+    <div class="result-card" id="cardFoe"><div class="rc-name">好友</div><div class="rc-score" id="rcFoe">0</div></div>
+  </div>
+  <p class="hint2" id="resultNote"></p>
+  <button id="againBtn" class="btn">再 来 一 局</button>
+  <button id="lobbyBtn" class="btn small gold">退 出 房 间</button>
+</div>
+
+<!-- 加载失败提示 -->
+<div id="errScreen" class="screen hidden">
+  <div class="over-label">无法进入梦境</div>
+  <p class="hint">联机模块加载失败。<br>请不要直接双击打开本文件，请先运行 <b>npm install</b> 与 <b>npm start</b>，<br>然后访问 http://localhost:3000</p>
+</div>
+
+<div id="toast"></div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+'use strict';
+
+/* ════════════════════ ① 基础与常量 ════════════════════ */
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const $ = id => document.getElementById(id);
+
+let W = 0, H = 0, u = 1, groundY = 0, T = 0;
+let playerScreenX = 0, friendScreenX = 0;
+let bgCanvas = null, vigCanvas = null;
+
+const rand = (a, b) => a + Math.random() * (b - a);
+
+/* —— 世界逻辑常量：固定值，保证两台电脑物理与赛道完全一致 ——
+   （原版随窗口高度缩放 u；联机版 u 仅用于绘制尺寸，逻辑恒为 1） */
+const S0 = 340, SMAX = 640, ACC = 0.012, D1 = 25000;         // 速度曲线
+const T_BREAK = Math.log(1 + D1 * ACC / S0) / ACC;           // 达到极速的时刻
+const G_RISE = 2650, G_FALL = 4200;                          // 跳跃重力
+const JUMP_V = 905, JUMP_HOLD = 1700, HOLD_VMAX = 60;        // 起跳 / 长按
+const PR = 15;                                               // 逻辑碰撞半径
+const STAR_PAR = [0.05, 0.10, 0.18];
+const MAX_P = 420;
+
+/* 距离-时间解析解：dist = ∫speed dt，两台电脑由同一时钟推出同一距离 */
+function distAt(t) {
+  if (t <= 0) return 0;
+  if (t < T_BREAK) return (S0 / ACC) * (Math.exp(ACC * t) - 1);
+  return D1 + SMAX * (t - T_BREAK);
+}
+const speedAtDist = d => Math.min(S0 + d * ACC, SMAX);
+
+/* 种子随机（确定性赛道） */
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+/* ════════════════════ ② 网络与同步状态 ════════════════════ */
+const NET = { socket: null, online: false, clockOff: 0, synced: false };
+let roomCode = null, mySlot = 0, myPid = null;
+
+const RACE = { phase: 'idle', seed: 0, startAt: 0, lastStartAt: 0 };
+/* phase: idle 菜单/大厅 | count 倒计时 | run 奔跑 | done 结算 */
+
+const ME  = { h: 0, vh: 0, grounded: true, alive: true, squash: 0, bonus: 0, score: 0, jumpHeld: false };
+const FOE = { present: false, connected: false, slot: 0, h: 0, vh: 0, grounded: true,
+              alive: true, score: 0, jumpHeld: false, trailAcc: 0 };
+
+let ui = 'menu';   /* menu | lobby | count | run | crashed | over */
+
+const serverNow = () => Date.now() + NET.clockOff;
+
+function syncClock(n = 3) {
+  return new Promise(res => {
+    let i = 0; const offs = [];
+    const step = () => {
+      if (i >= n || !NET.socket) {
+        if (offs.length) { offs.sort((a, b) => a - b); NET.clockOff = offs[(offs.length - 1) >> 1]; }
+        NET.synced = true; res(); return;
+      }
+      i++; const t0 = Date.now();
+      NET.socket.timeout(2500).emit('sync:ping', t0, (err, r) => {
+        if (!err && r && Number.isFinite(r.now)) {
+          const rtt = Date.now() - t0;
+          offs.push(r.now - t0 - rtt / 2);
+        }
+        setTimeout(step, 60);
+      });
+    };
+    step();
+  });
+}
+
+/* ════════════════════ ③ 配色 ════════════════════ */
+const PAL = {
+  1: { glow: 'rgba(89,216,255,',  hi: '#bfe8ff', mid: '#7f8cff', edge: 'rgba(110,90,255,.25)',
+       trail: ['#6ff2ff', '#b48cff', '#ffffff', '#6ff2ff', '#ffd98a'],
+       burst: ['#7df0ff', '#c9a6ff', '#ffffff', '#8fd8ff'] },
+  2: { glow: 'rgba(255,140,220,', hi: '#ffd9f2', mid: '#ff8cd7', edge: 'rgba(255,110,200,.25)',
+       trail: ['#ff9de0', '#ffc2ec', '#ffffff', '#ff8cd7', '#ffd9f2'],
+       burst: ['#ff9de0', '#ffd9f2', '#ffffff', '#ff8cd7'] },
+};
+const myPal  = () => PAL[mySlot] || PAL[1];
+const foePal = () => PAL[FOE.slot] || PAL[2];
+
+/* ════════════════════ ④ 尺寸与背景 ════════════════════ */
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
+  canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  u = Math.max(0.6, Math.min(1, H / 760));
+  groundY = Math.round(H * 0.8);
+  playerScreenX = Math.round(W * 0.2);
+  friendScreenX = playerScreenX + Math.round(58 * Math.max(.7, u));
+  buildBackground(); buildVignette(); buildStars(); buildDust();
+}
+
+function buildBackground() {
+  bgCanvas = document.createElement('canvas');
+  bgCanvas.width = W; bgCanvas.height = H;
+  const g = bgCanvas.getContext('2d');
+  const lg = g.createLinearGradient(0, 0, 0, H);
+  lg.addColorStop(0, '#070a26'); lg.addColorStop(.5, '#181045');
+  lg.addColorStop(.82, '#32205f'); lg.addColorStop(1, '#452a72');
+  g.fillStyle = lg; g.fillRect(0, 0, W, H);
+  const nebulas = [
+    [W * .24, H * .28, H * .55, 'rgba(96,64,208,0.22)'],
+    [W * .78, H * .42, H * .50, 'rgba(42,190,220,0.14)'],
+    [W * .55, H * .12, H * .40, 'rgba(230,150,255,0.10)']
+  ];
+  for (const [x, y, r, c] of nebulas) {
+    const rg = g.createRadialGradient(x, y, 0, x, y, r);
+    rg.addColorStop(0, c); rg.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = rg; g.fillRect(0, 0, W, H);
+  }
+}
+
+function buildVignette() {
+  vigCanvas = document.createElement('canvas');
+  vigCanvas.width = W; vigCanvas.height = H;
+  const g = vigCanvas.getContext('2d');
+  const rg = g.createRadialGradient(W / 2, H / 2, Math.min(W, H) * .45, W / 2, H / 2, Math.max(W, H) * .78);
+  rg.addColorStop(0, 'rgba(6,4,22,0)'); rg.addColorStop(1, 'rgba(6,4,22,.5)');
+  g.fillStyle = rg; g.fillRect(0, 0, W, H);
+}
+
+let stars = [], dust = [];
+function buildStars() {
+  stars = [];
+  const n = Math.round(W / 12);
+  for (let i = 0; i < n; i++) stars.push({
+    x: Math.random() * W, y: Math.random() * groundY * .95,
+    r: rand(.5, 1.7), layer: (Math.random() * 3) | 0, tw: Math.random() * 6.283
+  });
+}
+function buildDust() {
+  dust = [];
+  for (let i = 0; i < 34; i++) dust.push({
+    x: Math.random() * W, y: Math.random() * H,
+    vx: rand(-8, 8), vy: rand(-14, -5), r: rand(1, 2.6), a: rand(.08, .25), ph: rand(0, 6.283)
+  });
+}
+
+/* ════════════════════ ⑤ 赛道（种子确定性生成） ════════════════════ */
+let obstacles = [], pickups = [], particles = [];
+let obRng = null, puRng = null, genObUntil = 0, genPuUntil = 0, puIdSeq = 0;
+let MODE = { dist: 0, speed: S0, bgDist: 0 };
+let best = +(localStorage.getItem('particle-run-best') || 0);
+
+function initTrack(seed) {
+  obRng = mulberry32(seed);
+  puRng = mulberry32(seed ^ 0x9E3779B9);
+  obstacles = []; pickups = [];
+  genObUntil = 1000; genPuUntil = 560; puIdSeq = 0;
+}
+
+/* 只按「赛道距离」生成，两台电脑屏幕宽度不同也不影响内容 */
+function genTrack(horizon) {
+  while (genObUntil < horizon) {
+    const d = genObUntil;
+    if (obRng() < .62) {
+      obstacles.push({ kind: 'spike', d, w: 40 + obRng() * 26, h: 48 + obRng() * 32,
+        a1: obRng() * 14 - 7, a2: obRng() * 10 - 5 });
+    } else {
+      obstacles.push({ kind: 'orb', d, hA: 28 + obRng() * 8, r: 17 + obRng() * 4, t: obRng() * 6 });
+    }
+    genObUntil += 330 + obRng() * 230;
+  }
+  while (genPuUntil < horizon) {
+    const n = 4 + ((puRng() * 3) | 0);
+    const base = puRng() < .45 ? 130 : 30;         // 高低两条路线（逻辑高度）
+    for (let i = 0; i < n; i++) pickups.push({
+      id: puIdSeq++, d: genPuUntil + i * 38,
+      h0: base - Math.sin(i * .85) * 26, r: 8, ph: puRng() * 6.283, got: false
+    });
+    genPuUntil += n * 38 + 430 + puRng() * 400;
+  }
+}
+
+/* ════════════════════ ⑥ 粒子特效 ════════════════════ */
+function addP(p) { p.max = p.life; if (particles.length >= MAX_P) particles.shift(); particles.push(p); }
+
+function updateParticles(dt) {
+  for (const p of particles) {
+    p.life -= dt;
+    p.x += p.vx * dt; p.y += p.vy * dt;
+    if (p.g) p.vy += p.g * dt;
+  }
+  particles = particles.filter(p => p.life > 0);
+}
+
+function pickupBurst(x, y) {
+  addP({ type: 'ring', x, y, r0: 4 * u, r1: 30 * u, life: .3, lw: 2.5 * u, c: 'rgba(255,225,150,.85)' });
+  for (let i = 0; i < 10; i++) {
+    const a = rand(0, 6.283), sp = rand(40, 160) * u;
+    addP({ type: 'dot', x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+      life: rand(.3, .55), r: rand(1.5, 3.5) * u, c: Math.random() < .5 ? '#ffe9a8' : '#ffffff', g: 120 * u });
+  }
+  addP({ type: 'glyph', x, y, ch: '✦', vx: 0, vy: -40 * u, life: .5, size: 14 * u, c: '#ffe9a8', rot: 0 });
+}
+
+function landDust(x) {
+  for (let i = 0; i < 9; i++) {
+    addP({ type: 'dot', x: x + rand(-14, 14) * u, y: groundY - rand(0, 4) * u,
+      vx: rand(-60, 60) * u, vy: rand(-30, -6) * u,
+      life: rand(.3, .55), r: rand(2, 4.5) * u, c: 'rgba(190,180,230,.55)', a: .55, g: 120 * u });
+  }
+}
+
+function jumpFx(x, pal) {
+  addP({ type: 'ring', x, y: groundY - 4 * u, r0: 6 * u, r1: 46 * u, life: .35, lw: 3 * u, c: pal.glow + '.9)' });
+  for (let i = 0; i < 12; i++) {
+    const a = rand(0, 6.283), sp = rand(50, 180) * u;
+    addP({ type: 'dot', x: x + rand(-6, 6) * u, y: groundY - 2 * u,
+      vx: Math.cos(a) * sp, vy: -Math.abs(Math.sin(a)) * sp * .7,
+      life: rand(.3, .6), r: rand(2, 4.5) * u, c: pal.trail[(Math.random() * pal.trail.length) | 0], g: 300 * u });
+  }
+}
+
+function crashBurst(x, y, pal) {
+  for (let i = 0; i < 42; i++) {
+    const a = rand(0, 6.283), sp = rand(60, 340) * u;
+    addP({ type: 'dot', x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+      life: rand(.5, 1.1), r: rand(2, 5.5) * u, c: pal.burst[(Math.random() * pal.burst.length) | 0], g: 220 * u });
+  }
+  addP({ type: 'ring', x, y, r0: 8 * u, r1: 130 * u, life: .5, lw: 4 * u, c: pal.glow + '.9)' });
+}
+
+function spawnTrail(dt, x, ent, pal, accKey) {
+  ent[accKey] = (ent[accKey] || 0) + dt;
+  while (ent[accKey] > .016) {
+    ent[accKey] -= .016;
+    addP({ type: 'dot', x: x - PR * u * .5 + rand(-3, 3) * u, y: groundY - ent.h - PR * u + rand(-6, 6) * u,
+      vx: rand(-70, -30) * u, vy: rand(-14, 14) * u,
+      life: rand(.3, .55), r: rand(2.5, 6) * u, c: pal.trail[(Math.random() * pal.trail.length) | 0] });
+  }
+}
+
+/* ════════════════════ ⑦ 物理与碰撞 ════════════════════ */
+function stepBall(ent, dt) {
+  if (ent.grounded) return null;
+  let a;
+  if (ent.vh > 0) {                                    // 上升阶段
+    a = -G_RISE;
+    if (ent.jumpHeld && ent.vh > HOLD_VMAX) a += JUMP_HOLD;
+  } else {                                             // 下落阶段
+    a = -G_FALL;
+  }
+  ent.vh += a * dt;
+  ent.h += ent.vh * dt;
+  if (ent.h <= 0) { ent.h = 0; ent.vh = 0; ent.grounded = true; return 'land'; }
+  return null;
+}
+
+function circleRect(cx, cy, cr, rx, ry, rw, rh) {
+  const nx = Math.max(rx, Math.min(cx, rx + rw));
+  const ny = Math.max(ry, Math.min(cy, ry + rh));
+  const dx = cx - nx, dy = cy - ny;
+  return dx * dx + dy * dy < cr * cr;
+}
+
+function checkCollisions() {
+  const cx = MODE.dist, cy = ME.h + PR;
+  for (const p of pickups) {
+    if (p.got) continue;
+    const dx = p.d - cx;
+    const py = p.h0 + Math.sin(T * 2.4 + p.ph) * 5;
+    const dy = py - cy;
+    const rr = p.r + PR + 3;
+    if (dx * dx + dy * dy < rr * rr) {
+      p.got = true;                                    // 本地立刻标记，等服务器确认
+      if (NET.socket) NET.socket.emit('p:pick', { id: p.id });
+    }
+  }
+  for (const o of obstacles) {
+    if (o.kind === 'spike') {
+      const rw = o.w * .72, rh = o.h * .88;
+      if (circleRect(cx, cy, PR * .85, o.d - rw / 2, 0, rw, rh)) { meCrash(); return; }
+    } else {
+      const dx = o.d - cx, dy = o.hA - cy, rr = o.r * .78 + PR * .85;
+      if (dx * dx + dy * dy < rr * rr) { meCrash(); return; }
+    }
+  }
+}
+
+function doJump() {
+  if (RACE.phase !== 'run' || !ME.alive || !ME.grounded) return;
+  ME.vh = JUMP_V; ME.grounded = false; ME.jumpHeld = true;
+  jumpFx(playerScreenX, myPal());
+  if (NET.socket) NET.socket.emit('p:jump', { down: true });
+}
+
+function releaseJump() {
+  if (ME.jumpHeld) { ME.jumpHeld = false; if (NET.socket) NET.socket.emit('p:jump', { down: false }); }
+}
+
+function meCrash() {
+  if (!ME.alive) return;
+  ME.alive = false;
+  crashBurst(playerScreenX, groundY - ME.h - PR * u, myPal());
+  if (NET.socket) NET.socket.emit('p:crash', { score: ME.score });
+  saveBest();
+  if (FOE.present && FOE.alive) {
+    ui = 'crashed';
+    $('crashScreen').classList.remove('hidden');
+  }
+  /* 若好友也已坠毁，服务器会发 race:over */
+}
+
+function saveBest() {
+  if (ME.score > best) { best = ME.score; localStorage.setItem('particle-run-best', best); }
+}
+
+/* ════════════════════ ⑧ 绘制 ════════════════════ */
+function drawHills() {
+  const hill = (base, a1, f1, p1, a2, f2, p2, par, color) => {
+    const off = MODE.bgDist * par;
+    ctx.beginPath(); ctx.moveTo(0, groundY + 2);
+    for (let sx = 0; sx <= W + 26; sx += 26) {
+      const wx = sx + off;
+      ctx.lineTo(sx, groundY - base - Math.abs(Math.sin(wx * f1 + p1)) * a1 - Math.sin(wx * f2 + p2) * a2);
+    }
+    ctx.lineTo(W, groundY + 2); ctx.closePath();
+    ctx.fillStyle = color; ctx.fill();
+  };
+  hill(88 * u, 30 * u, .005, 0, 12 * u, .011, 1.7, .10, 'rgba(84,58,158,0.30)');
+  hill(40 * u, 22 * u, .007, 2.1, 9 * u, .013, .5, .22, 'rgba(52,34,104,0.55)');
+}
+
+function drawGround() {
+  const g = ctx.createLinearGradient(0, groundY, 0, H);
+  g.addColorStop(0, 'rgba(30,20,66,0.95)'); g.addColorStop(1, '#0c0a24');
+  ctx.fillStyle = g; ctx.fillRect(0, groundY, W, H - groundY);
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.strokeStyle = 'rgba(126,240,255,.18)'; ctx.lineWidth = 6;
+  ctx.beginPath(); ctx.moveTo(0, groundY); ctx.lineTo(W, groundY); ctx.stroke();
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.strokeStyle = 'rgba(126,240,255,.7)'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(0, groundY); ctx.lineTo(W, groundY); ctx.stroke();
+  ctx.fillStyle = 'rgba(126,240,255,.16)';
+  const gap = 95 * u, off = -(MODE.bgDist % gap);
+  for (let x = off; x < W; x += gap) ctx.fillRect(x + 18, groundY + 12 * u, 26 * u, 2.5);
+}
+
+function starPath(n, r1, r2, rot) {
+  ctx.beginPath();
+  for (let i = 0; i < n * 2; i++) {
+    const a = rot + i * Math.PI / n, rr = i % 2 === 0 ? r1 : r2;
+    const X = Math.cos(a) * rr, Y = Math.sin(a) * rr;
+    i === 0 ? ctx.moveTo(X, Y) : ctx.lineTo(X, Y);
+  }
+  ctx.closePath();
+}
+
+function drawObstacle(o) {
+  const x = playerScreenX + (o.d - MODE.dist);
+  if (x < -160 || x > W + 260) return;
+  if (o.kind === 'spike') {
+    const { w, h } = o;
+    ctx.globalCompositeOperation = 'lighter';
+    const gg = ctx.createRadialGradient(x, groundY, 0, x, groundY, w);
+    gg.addColorStop(0, 'rgba(126,240,255,.12)'); gg.addColorStop(1, 'rgba(126,240,255,0)');
+    ctx.fillStyle = gg; ctx.fillRect(x - w, groundY - w, w * 2, w);
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = '#221543';
+    ctx.beginPath();
+    ctx.moveTo(x - w / 2, groundY);
+    ctx.lineTo(x - w * .16 + o.a1 * u, groundY - h * u);
+    ctx.lineTo(x + w * .10, groundY);
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = 'rgba(126,240,255,.65)'; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x + w * .02, groundY);
+    ctx.lineTo(x + w * .34 + o.a2 * u, groundY - h * .55 * u);
+    ctx.lineTo(x + w * .5, groundY);
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = 'rgba(215,139,255,.6)'; ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,255,255,.18)';
+    ctx.beginPath(); ctx.moveTo(x - w * .16 + o.a1 * u, groundY - h * u); ctx.lineTo(x - w * .03, groundY); ctx.stroke();
+  } else {
+    const y = groundY - o.hA * u, r = o.r * u, rot = o.t * 2.2;
+    ctx.globalCompositeOperation = 'lighter';
+    const gg = ctx.createRadialGradient(x, y, 0, x, y, r * 2.2);
+    gg.addColorStop(0, 'rgba(224,123,255,.3)'); gg.addColorStop(1, 'rgba(224,123,255,0)');
+    ctx.fillStyle = gg; ctx.fillRect(x - r * 2.2, y - r * 2.2, r * 4.4, r * 4.4);
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.save(); ctx.translate(x, y); ctx.rotate(rot);
+    starPath(6, r, r * .45, 0);
+    ctx.fillStyle = '#1b1038'; ctx.fill();
+    ctx.strokeStyle = 'rgba(224,123,255,.8)'; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.beginPath(); ctx.arc(0, 0, r * .3, 0, 6.283);
+    ctx.fillStyle = 'rgba(255,157,242,.9)'; ctx.fill();
+    ctx.restore();
+  }
+}
+
+function drawPickup(p) {
+  const x = playerScreenX + (p.d - MODE.dist);
+  if (x < -60 || x > W + 120) return;
+  const y = groundY - (p.h0 + Math.sin(T * 2.4 + p.ph) * 5) * u;
+  const pulse = 1 + .18 * Math.sin(T * 5 + p.ph);
+  const r = p.r * u * pulse;
+  ctx.globalCompositeOperation = 'lighter';
+  const gg = ctx.createRadialGradient(x, y, 0, x, y, r * 2.4);
+  gg.addColorStop(0, 'rgba(255,225,150,.35)'); gg.addColorStop(1, 'rgba(255,225,150,0)');
+  ctx.fillStyle = gg; ctx.fillRect(x - r * 2.4, y - r * 2.4, r * 4.8, r * 4.8);
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.beginPath(); ctx.arc(x, y, r, 0, 6.283); ctx.fillStyle = '#ffe9a8'; ctx.fill();
+  ctx.beginPath(); ctx.arc(x - r * .2, y - r * .2, r * .45, 0, 6.283); ctx.fillStyle = '#fffdf4'; ctx.fill();
+}
+
+function drawBall(x, ent, pal, label, dead) {
+  if (dead) return;
+  const r = PR * u;
+  const idleBob = (RACE.phase === 'idle' || RACE.phase === 'count')
+    ? Math.sin(T * 2.2) * 4 * u : 0;
+  const y = groundY - (ent.h + PR) * u + idleBob;
+  ctx.globalCompositeOperation = 'lighter';
+  const glow = ctx.createRadialGradient(x, y, 0, x, y, r * 3);
+  glow.addColorStop(0, pal.glow + '.4)'); glow.addColorStop(1, pal.glow + '0)');
+  ctx.fillStyle = glow; ctx.fillRect(x - r * 3, y - r * 3, r * 6, r * 6);
+  const rg = ctx.createRadialGradient(x, groundY, 0, x, groundY, r * 2);
+  rg.addColorStop(0, pal.glow + '.14)'); rg.addColorStop(1, pal.glow + '0)');
+  ctx.fillStyle = rg; ctx.fillRect(x - r * 2, groundY - r, r * 4, r * 2);
+  ctx.globalCompositeOperation = 'source-over';
+  const sq = ent === ME && ent.squash > 0, air = !ent.grounded && idleBob === 0;
+  const sx = sq ? 1.18 : air ? .92 : 1, sy = sq ? .82 : air ? 1.1 : 1;
+  ctx.save(); ctx.translate(x, y); ctx.scale(sx, sy);
+  const body = ctx.createRadialGradient(-r * .25, -r * .3, r * .1, 0, 0, r);
+  body.addColorStop(0, '#ffffff'); body.addColorStop(.35, pal.hi);
+  body.addColorStop(.75, pal.mid); body.addColorStop(1, pal.edge);
+  ctx.beginPath(); ctx.arc(0, 0, r, 0, 6.283); ctx.fillStyle = body; ctx.fill();
+  ctx.beginPath(); ctx.arc(-r * .15, -r * .2, r * .42, 0, 6.283); ctx.fillStyle = 'rgba(255,255,255,.95)'; ctx.fill();
+  ctx.restore();
+  if (label) {
+    ctx.globalAlpha = .55; ctx.fillStyle = '#dfe8ff';
+    ctx.font = `${Math.round(11 * u)}px "Segoe UI", sans-serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(label, x, y - r * 2.1);
+    ctx.globalAlpha = 1;
+  }
+}
+
+function drawParticles() {
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.globalCompositeOperation = 'lighter';
+  for (const p of particles) {
+    const k = p.life / p.max;
+    if (p.type === 'dot') {
+      ctx.globalAlpha = k * (p.a || 1);
+      ctx.fillStyle = p.c;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r * (.4 + .6 * k), 0, 6.283); ctx.fill();
+    } else if (p.type === 'ring') {
+      const rad = p.r0 + (p.r1 - p.r0) * (1 - k);
+      ctx.globalAlpha = k;
+      ctx.strokeStyle = p.c; ctx.lineWidth = p.lw * k + .5;
+      ctx.beginPath(); ctx.arc(p.x, p.y, rad, 0, 6.283); ctx.stroke();
+    } else if (p.type === 'glyph') {
+      ctx.globalAlpha = k;
+      ctx.fillStyle = p.c;
+      ctx.font = `${Math.round(p.size)}px "Segoe UI Symbol", sans-serif`;
+      ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot || 0);
+      ctx.fillText(p.ch, 0, 0);
+      ctx.restore();
+    }
+  }
+  ctx.globalAlpha = 1;
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+function draw() {
+  if (!bgCanvas || !vigCanvas || W < 2 || H < 2) return;
+  ctx.drawImage(bgCanvas, 0, 0, W, H);
+  for (const st of stars) {
+    const tw = .25 + .75 * (.5 + .5 * Math.sin(T * 1.8 + st.tw * 4));
+    ctx.globalAlpha = tw;
+    ctx.fillStyle = st.r > 1.4 ? '#ffd9f2' : '#cfe6ff';
+    ctx.beginPath(); ctx.arc(st.x, st.y, st.r, 0, 6.283); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  for (const d of dust) {
+    ctx.globalAlpha = d.a;
+    ctx.fillStyle = '#bcd8ff';
+    ctx.beginPath(); ctx.arc(d.x, d.y, d.r, 0, 6.283); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  drawHills();
+  drawGround();
+  for (const p of pickups) drawPickup(p);
+  for (const o of obstacles) drawObstacle(o);
+  const inRoom = !!roomCode;
+  drawBall(friendScreenX, FOE, foePal(), inRoom && FOE.present ? '好友' : null, !FOE.present || !FOE.alive);
+  drawBall(playerScreenX, ME, myPal(), inRoom ? '你' : null, !ME.alive && RACE.phase !== 'idle');
+  drawParticles();
+  ctx.drawImage(vigCanvas, 0, 0, W, H);
+}
+
+/* ════════════════════ ⑨ HUD / 界面流转 ════════════════════ */
+let lastScore = -1, lastBest = -1, lastFoeScore = -1;
+function updateHud() {
+  if (ME.score !== lastScore) { $('scoreVal').textContent = ME.score; lastScore = ME.score; }
+  if (best !== lastBest) { $('bestVal').textContent = '最佳 ' + best; lastBest = best; }
+  if (FOE.present && FOE.score !== lastFoeScore) {
+    $('foeTxt').textContent = '好友 ' + FOE.score; lastFoeScore = FOE.score;
+  }
+}
+
+let toastTimer = null;
+function toast(msg, ms = 2600) {
+  const t = $('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), ms);
+}
+
+function showScreen(name) {
+  for (const s of ['menuScreen', 'lobbyScreen', 'countScreen', 'crashScreen', 'overScreen'])
+    $(s).classList.add('hidden');
+  if (name) $(name).classList.remove('hidden');
+}
+
+function setHudVisible(v) {
+  $('hud').classList.toggle('hidden', !v);
+  $('codeChip').classList.toggle('hidden', !roomCode);
+  $('exitBtn').classList.toggle('hidden', !roomCode);
+  $('foeChip').classList.toggle('hidden', !roomCode || !FOE.present);
+  if (roomCode) $('codeTxt').textContent = roomCode;
+  updateFoeChip();
+}
+
+function updateFoeChip() {
+  const dot = $('foeDot');
+  dot.className = 'dot' + (!FOE.connected ? ' off' : !FOE.alive && RACE.phase !== 'idle' ? ' dead' : '');
+  $('foeTxt').textContent = !FOE.connected ? '好友已断线'
+    : RACE.phase !== 'idle' && !FOE.alive ? '好友坠落 ' + FOE.score
+    : '好友 ' + FOE.score;
+}
+
+function resetForRace() {
+  ME.h = 0; ME.vh = 0; ME.grounded = true; ME.alive = true;
+  ME.squash = 0; ME.bonus = 0; ME.score = 0; ME.jumpHeld = false;
+  FOE.h = 0; FOE.vh = 0; FOE.grounded = true; FOE.alive = true;
+  FOE.score = 0; FOE.jumpHeld = false;
+  MODE.dist = 0; MODE.speed = S0; MODE.bgDist = 0;
+  lastScore = lastFoeScore = -1;
+}
+
+function onRaceStart(msg) {
+  if (msg.startAt === RACE.lastStartAt) return;      // 重复事件忽略
+  RACE.lastStartAt = msg.startAt;
+  RACE.seed = msg.seed; RACE.startAt = msg.startAt;
+  RACE.phase = 'count';
+  ui = 'count';
+  resetForRace();
+  initTrack(msg.seed);
+  showScreen('countScreen');
+  setHudVisible(true);
+  $('countNum').textContent = '准备';
+  if (msg.resume) toast('已回到比赛，赛道进度已恢复');
+  syncClock().then(() => {
+    if (RACE.startAt !== msg.startAt) return;        // 期间又开了新局
+    /* 到点后由主循环切换为 run */
+  });
+}
+
+function beginRun() {
+  RACE.phase = 'run';
+  ui = 'run';
+  showScreen(null);
+  setHudVisible(true);
+  $('countNum').textContent = 'GO!';
+  $('countScreen').classList.remove('hidden');
+  setTimeout(() => { if (RACE.phase === 'run') $('countScreen').classList.add('hidden'); }, 420);
+}
+
+function onRaceOver(msg) {
+  RACE.phase = 'done';
+  ui = 'over';
+  saveBest();
+  const bySlot = {};
+  for (const r of msg.results || []) bySlot[r.slot] = r;
+  const me = bySlot[mySlot] || { score: ME.score };
+  const foe = bySlot[FOE.slot] || { score: FOE.score };
+  ME.score = me.score; FOE.score = foe.score;
+  const won = ME.score > FOE.score, tie = ME.score === FOE.score;
+  $('resultTitle').textContent = tie ? '平局！' : won ? '你赢了！' : '好友获胜！';
+  $('rcMe').textContent = ME.score;
+  $('rcFoe').textContent = FOE.score;
+  $('cardMe').className = 'result-card' + (!tie && won ? ' win' : '');
+  $('cardFoe').className = 'result-card pink' + (!tie && !won ? ' win' : '');
+  $('resultNote').textContent =
+    msg.note === 'opponent_left' ? '对方离开，比赛提前结束' : '收集星尘 +10 · 距离即分数';
+  $('againBtn').disabled = false;
+  $('againBtn').textContent = '再 来 一 局';
+  showScreen('overScreen');
+  setHudVisible(true);
+}
+
+function backToMenu() {
+  if (NET.socket && roomCode) NET.socket.emit('room:leave');
+  roomCode = null; mySlot = 0; myPid = null;
+  FOE.present = false; FOE.connected = false; FOE.slot = 0;
+  RACE.phase = 'idle';
+  ui = 'menu';
+  resetForRace();
+  obstacles = []; pickups = [];
+  sessionStorage.removeItem('pr-session');
+  showScreen('menuScreen');
+  setHudVisible(false);
+  refreshNetStatus();
+}
+
+function enterLobby(code) {
+  roomCode = code;
+  ui = 'lobby';
+  $('lobbyCode').textContent = code;
+  $('lobbyHint').innerHTML = '把六位房间码发给好友<br>好友输入后加入，双方就绪自动开赛';
+  showScreen('lobbyScreen');
+  setHudVisible(false);
+}
+
+function leaveAndToast(msg) {
+  backToMenu();
+  if (msg) toast(msg);
+}
+
+/* ════════════════════ ⑩ 输入 ════════════════════ */
+window.addEventListener('keydown', e => {
+  if (e.code === 'Space') {
+    e.preventDefault();
+    if (RACE.phase === 'run' && ME.alive) doJump();
+  } else if (e.code === 'Escape') {
+    if (roomCode && (RACE.phase === 'run' || ui === 'crashed' || ui === 'over' || ui === 'lobby')) {
+      if (window.__escArm && Date.now() - window.__escArm < 1600) {
+        window.__escArm = 0;
+        leaveAndToast('已退出房间');
+      } else {
+        window.__escArm = Date.now();
+        toast('再按一次 Esc 退出房间');
+      }
+    }
+  }
+});
+window.addEventListener('keyup', e => { if (e.code === 'Space') releaseJump(); });
+canvas.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  if (RACE.phase === 'run' && ME.alive) doJump();
+});
+canvas.addEventListener('pointerup', releaseJump);
+canvas.addEventListener('pointerleave', releaseJump);
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) releaseJump();
+});
+
+/* ════════════════════ ⑪ Socket 事件接线 ════════════════════ */
+function refreshNetStatus() {
+  const el = $('netStatus');
+  el.classList.toggle('err', !NET.online);
+  el.textContent = NET.online ? '已连接服务器 ✓' : NET.socket ? '连接断开，正在重连…' : '连接服务器中…';
+  $('createBtn').disabled = !NET.online;
+  $('joinBtn').disabled = !NET.online;
+}
+
+function saveSession() {
+  if (roomCode && myPid) sessionStorage.setItem('pr-session', JSON.stringify({ code: roomCode, playerId: myPid }));
+}
+function loadSession() {
+  try { return JSON.parse(sessionStorage.getItem('pr-session') || 'null'); } catch { return null; }
+}
+function tryRejoin() {
+  const s = loadSession();
+  if (!s || !NET.socket || roomCode) return;
+  toast('正在恢复上次的房间…');
+  NET.socket.timeout(4000).emit('room:rejoin', s, (err, r) => {
+    if (err || !r || !r.ok) {
+      sessionStorage.removeItem('pr-session');
+      toast(err ? '恢复超时' : r && r.reason === 'not_found' ? '房间已失效' : '恢复失败', 2200);
+      return;
+    }
+    roomCode = r.code; mySlot = r.slot; myPid = r.playerId;
+    ME.score = r.score | 0; ME.alive = !!r.alive;
+    FOE.present = false;                            // 等 room:update 填充
+    if (r.state === 'running') {
+      ui = 'run';
+      setHudVisible(true);
+      showScreen(null);
+    } else {
+      enterLobby(r.code);
+    }
+  });
+}
+
+function connectSocket() {
+  if (typeof io === 'undefined') {                  // file:// 直接打开等情况
+    showScreen('errScreen');
+    return;
+  }
+  NET.socket = io({ transports: ['websocket', 'polling'], reconnectionDelayMax: 4000 });
+
+  NET.socket.on('connect', () => {
+    NET.online = true; refreshNetStatus();
+    tryRejoin();
+  });
+  NET.socket.on('disconnect', () => {
+    NET.online = false; refreshNetStatus();
+    if (roomCode) toast('与服务器的连接断开，正在重连…');
+  });
+  NET.socket.on('connect_error', () => {
+    NET.online = false; refreshNetStatus();
+  });
+
+  NET.socket.on('room:kicked', () => leaveAndToast('该房间已在其他窗口打开'));
+
+  NET.socket.on('room:update', (msg) => {
+    const players = (msg && msg.players) || [];
+    const foe = players.find(p => p.slot !== mySlot);
+    const hadFoe = FOE.present;
+    FOE.present = !!foe;
+    if (foe) {
+      FOE.slot = foe.slot;
+      const wasConnected = FOE.connected;
+      FOE.connected = foe.connected;
+      FOE.alive = foe.alive;
+      FOE.score = foe.score;
+      if (hadFoe && wasConnected && !foe.connected) toast('好友已断线，等待重连…');
+      if (hadFoe && !wasConnected && foe.connected && RACE.phase === 'run') toast('好友已回到比赛！');
+    } else {
+      FOE.connected = false;
+    }
+    updateFoeChip();
+    setHudVisible(RACE.phase !== 'idle' && ui !== 'lobby');
+    if (ui === 'lobby' && !FOE.present && hadFoe) {
+      $('lobbyHint').innerHTML = '好友已离开，继续等待新的好友…';
+    }
+  });
+
+  NET.socket.on('race:start', onRaceStart);
+  NET.socket.on('race:over', onRaceOver);
+
+  NET.socket.on('o:jump', (msg) => {
+    if (!msg) return;
+    if (msg.down) {
+      FOE.jumpHeld = true;
+      if (FOE.grounded && FOE.alive && RACE.phase === 'run') {
+        FOE.vh = JUMP_V; FOE.grounded = false;
+        jumpFx(friendScreenX, foePal());
+      }
+    } else FOE.jumpHeld = false;
+  });
+
+  NET.socket.on('o:state', (s) => {
+    if (!s || RACE.phase !== 'run') return;
+    if (Math.abs(FOE.h - s.h) > 60) FOE.h = s.h;
+    else FOE.h += (s.h - FOE.h) * .45;
+    FOE.vh = s.vh; FOE.grounded = s.grounded;
+    FOE.alive = s.alive; FOE.score = s.score;
+    updateFoeChip();
+  });
+
+  NET.socket.on('race:picked', (msg) => {
+    if (!msg) return;
+    const pu = pickups.find(p => p.id === msg.id && !p.got);
+    if (pu) {
+      pu.got = true;
+      pickupBurst(playerScreenX + (pu.d - MODE.dist), groundY - pu.h0 * u);
+    }
+    if (msg.scores) {
+      if (msg.slot === mySlot && ME.alive) ME.bonus += 10;   // 本地分数 = 距离分 + 加成
+      FOE.score = msg.scores[FOE.slot] || FOE.score;
+      updateFoeChip();
+    }
+  });
+
+  NET.socket.on('race:crashed', (msg) => {
+    if (!msg || msg.slot !== FOE.slot) return;
+    if (FOE.alive) {
+      FOE.alive = false;
+      crashBurst(friendScreenX, groundY - FOE.h - PR * u, foePal());
+      if (ME.alive) toast('好友坠毁了！坚持住！', 2200);
+      updateFoeChip();
+    }
+  });
+
+  NET.socket.on('peer:left', (msg) => {
+    if (msg && msg.slot === FOE.slot) {
+      FOE.present = false; FOE.connected = false;
+      updateFoeChip();
+      if (RACE.phase === 'run' || RACE.phase === 'count') toast('好友已离开房间');
+    }
+  });
+
+  /* —— 菜单按钮 —— */
+  $('createBtn').addEventListener('click', () => {
+    if (!NET.online) return;
+    $('createBtn').disabled = true;
+    NET.socket.timeout(5000).emit('room:create', (err, r) => {
+      $('createBtn').disabled = !NET.online;
+      if (err || !r || !r.ok) { toast(err ? '服务器无响应，请重试' : '创建失败'); return; }
+      roomCode = r.code; mySlot = r.slot; myPid = r.playerId;
+      saveSession();
+      enterLobby(r.code);
+    });
+  });
+
+  function joinRoom() {
+    if (!NET.online) return;
+    const code = $('codeInput').value.replace(/\D/g, '');
+    $('joinMsg').textContent = '';
+    if (code.length !== 6) { $('joinMsg').textContent = '请输入 6 位数字房间码'; return; }
+    $('joinBtn').disabled = true;
+    NET.socket.timeout(5000).emit('room:join', { code }, (err, r) => {
+      $('joinBtn').disabled = !NET.online;
+      if (err) { $('joinMsg').textContent = '服务器无响应，请重试'; return; }
+      if (!r.ok) {
+        $('joinMsg').textContent =
+          r.reason === 'not_found' ? '房间不存在，请检查房间码' :
+          r.reason === 'full' ? '房间已满（每房最多 2 人）' :
+          r.reason === 'running' ? '该房间正在进行比赛' : '加入失败';
+        return;
+      }
+      roomCode = r.code; mySlot = r.slot; myPid = r.playerId;
+      saveSession();
+      enterLobby(r.code);
+    });
+  }
+  $('joinBtn').addEventListener('click', joinRoom);
+  $('codeInput').addEventListener('keydown', e => { if (e.key === 'Enter') joinRoom(); });
+  $('codeInput').addEventListener('input', () => {
+    $('codeInput').value = $('codeInput').value.replace(/\D/g, '').slice(0, 6);
+  });
+
+  $('copyBtn').addEventListener('click', copyCode);
+  $('copyBtn2').addEventListener('click', copyCode);
+  $('cancelBtn').addEventListener('click', () => leaveAndToast('已退出房间'));
+  $('exitBtn').addEventListener('click', () => leaveAndToast('已退出房间'));
+  $('lobbyBtn').addEventListener('click', () => leaveAndToast('已退出房间'));
+
+  $('againBtn').addEventListener('click', () => {
+    if (!NET.socket || !roomCode) return;
+    $('againBtn').disabled = true;
+    $('againBtn').textContent = '等待好友…';
+    NET.socket.emit('race:again');
+  });
+}
+
+function copyCode() {
+  if (!roomCode) return;
+  const done = () => toast('房间码已复制：' + roomCode);
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(roomCode).then(done).catch(() => fallbackCopy(done));
+  } else fallbackCopy(done);
+}
+function fallbackCopy(done) {
+  const ta = document.createElement('textarea');
+  ta.value = roomCode; ta.style.position = 'fixed'; ta.style.opacity = '0';
+  document.body.appendChild(ta); ta.select();
+  try { document.execCommand('copy'); done(); } catch { toast('复制失败，请手动记录：' + roomCode); }
+  document.body.removeChild(ta);
+}
+
+/* ════════════════════ ⑫ 主循环 ════════════════════ */
+let stateTimer = null;
+function startStateTimer() {
+  clearInterval(stateTimer);
+  stateTimer = setInterval(() => {
+    if (NET.socket && RACE.phase === 'run' && roomCode) {
+      NET.socket.emit('p:state', {
+        h: +ME.h.toFixed(1), vh: +ME.vh.toFixed(1),
+        grounded: ME.grounded, alive: ME.alive, score: ME.score,
+      });
+    }
+  }, 100);
+}
+
+let lastTime = performance.now();
+function loop(now) {
+  const dt = Math.min((now - lastTime) / 1000, .033);
+  lastTime = now; T += dt;
+
+  if (RACE.phase === 'count') {
+    const remain = (RACE.startAt - serverNow()) / 1000;
+    if (remain > 3.35) {
+      $('countNum').textContent = '准备';
+    } else if (remain > 0) {
+      const n = String(Math.ceil(remain));
+      if ($('countNum').textContent !== n) {
+        $('countNum').textContent = n;
+        $('countNum').classList.remove('pop'); void $('countNum').offsetWidth;
+        $('countNum').classList.add('pop');
+      }
+    } else {
+      beginRun();
+      startStateTimer();
+    }
+    MODE.bgDist += 16 * u * dt;
+  } else if (RACE.phase === 'run') {
+    const elapsed = Math.max(0, (serverNow() - RACE.startAt) / 1000);
+    MODE.dist = distAt(elapsed);
+    MODE.speed = speedAtDist(MODE.dist);
+    MODE.bgDist += MODE.speed * dt;
+    if (ME.alive) ME.score = Math.floor(MODE.dist / 12) + ME.bonus;   // 坠毁后分数冻结
+
+    if (ME.alive) {
+      if (stepBall(ME, dt) === 'land') { landDust(playerScreenX); ME.squash = .12; }
+      if (ME.squash > 0) ME.squash -= dt;
+      spawnTrail(dt, playerScreenX, ME, myPal(), 'trailAcc');
+    }
+    if (FOE.present && FOE.alive) {
+      stepBall(FOE, dt);
+      spawnTrail(dt, friendScreenX, FOE, foePal(), 'trailAcc');
+    }
+
+    genTrack(MODE.dist + (W - playerScreenX) + 240);
+    obstacles = obstacles.filter(o => o.d > MODE.dist - playerScreenX - 220);
+    pickups = pickups.filter(p => p.d > MODE.dist - playerScreenX - 160 && !p.got);
+
+    if (ME.alive) checkCollisions();
+  } else if (RACE.phase === 'idle') {
+    MODE.bgDist += 16 * u * dt;
+    spawnTrail(dt, playerScreenX, ME, myPal(), 'trailAcc');
+  }
+
+  for (const st of stars) {
+    st.x -= (RACE.phase === 'run' ? MODE.speed : 16 * u) * STAR_PAR[st.layer] * dt;
+    if (st.x < -3) { st.x += W + 6; st.y = Math.random() * groundY * .95; }
+  }
+  for (const d of dust) {
+    d.x += (d.vx - (RACE.phase === 'run' ? MODE.speed : 16 * u) * .15) * dt; d.y += d.vy * dt;
+    if (d.y < -10) { d.y = H + 10; d.x = Math.random() * W; }
+    if (d.x < -10) d.x = W + 10; else if (d.x > W + 10) d.x = -10;
+  }
+
+  updateParticles(dt);
+  updateHud();
+  draw();
+  requestAnimationFrame(loop);
+}
+
+/* ════════════════════ ⑬ 启动 ════════════════════ */
+window.__PR = {                       // 调试/测试句柄（只读快照）
+  snap() {
+    return {
+      ui, phase: RACE.phase, room: roomCode, slot: mySlot,
+      dist: Math.round(MODE.dist), meScore: ME.score, meH: +ME.h.toFixed(1),
+      foePresent: FOE.present, foeScore: FOE.score, foeH: +FOE.h.toFixed(1),
+      foeAlive: FOE.alive, online: NET.online,
+    };
+  }
+};
+
+ME.h = 0;
+resize();
+window.addEventListener('resize', resize);
+connectSocket();
+refreshNetStatus();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
