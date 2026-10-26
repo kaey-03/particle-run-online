@@ -26,6 +26,7 @@
 ```
 particle-run-online/
 ├── package.json / package-lock.json
+├── Dockerfile          # 云托管容器构建（node:20-alpine，端口 80）
 ├── server/
 │   └── index.js        # Express 静态托管 + Socket.IO 房间与比赛仲裁
 └── public/
@@ -52,18 +53,41 @@ npm start            # 默认 http://localhost:3000，可用 PORT 环境变量�
 3. 窗口 B 输入房间码点「加入」，双方倒计时后自动开赛
 4. 互相跳跃，观察对方小球的同步；收集星尘看双方计数；关掉一个窗口，另一窗口会出现「好友已断线」并在对方彻底离开后结算
 
-## 部署到 Render（免费）
+## 线上地址（腾讯云 CloudBase 云托管）
 
-1. 把本文件夹推送到 GitHub 仓库（已含 `.gitignore`，不会提交 node_modules）
+已部署：**https://particle-run-335278-5-1492669395.sh.run.tcloudbase.com**
+
+直接把这个链接发给好友即可联机（国内可直连，支持 WebSocket）。
+
+## 部署方式一：腾讯云 CloudBase 云托管（国内推荐）
+
+前置：已开通腾讯云 CloudBase 环境的「云托管」功能（控制台 → 云开发 → 环境 → 云托管 → 开通，免费）。
+
+```bash
+npm i -g @cloudbase/cli     # 安装 CLI
+tcb login                   # 浏览器授权登录
+tcb cloudrun deploy \
+  --env-id <你的环境ID> \
+  --service-name particle-run \
+  --source . --port 80 \
+  --min-num 1 --max-num 2 \
+  --open-access-types PUBLIC --wait --force
+```
+
+部署完成后用 `tcb cloudrun detail --env-id <环境ID> --service-name particle-run --json` 查看 `DefaultDomainName` 即为公网地址。
+
+> 计费说明：开通免费，运行按量计费（本项目 1 核 2G × 最少 1 副本）。不玩时可在控制台把最小副本数调为 0 自动缩容省钱。
+
+## 部署方式二：Render 等海外平台（免费）
+
+1. 把本仓库推送到 GitHub
 2. Render 控制台 → New → Web Service → 连接该仓库
-3. 配置：
-   - **Build Command**: `npm install`
-   - **Start Command**: `npm start`
-4. 部署完成后获得公开网址（如 `https://xxxx.onrender.com`），把网址发给好友即可联机
+3. 配置：**Build Command**: `npm install`，**Start Command**: `npm start`
+4. 部署完成后获得公开网址发给好友即可
 
-其他任何支持 Node.js 的平台（Railway、Fly.io、腾讯云等）同理：`npm install && npm start`，服务监听平台注入的 `PORT` 并绑定 `0.0.0.0`。
+其他任何支持 Node.js 的平台（Railway、Fly.io 等）同理：`npm install && npm start`，服务监听平台注入的 `PORT` 并绑定 `0.0.0.0`。
 
-> 免费实例会休眠：首次访问需等约 30–60 秒冷启动，属正常现象；可升级付费实例或定时 ping 保活。
+> 注意：Render 等海外平台在国内网络下可能无法访问或不稳定；免费实例会休眠，首次访问需等约 30–60 秒冷启动。
 
 ## 常见问题
 
@@ -74,12 +98,14 @@ npm start            # 默认 http://localhost:3000，可用 PORT 环境变量�
 | 提示「房间已满」 | 每房最多 2 人，请另建房间 |
 | 提示「该房间正在进行比赛」 | 等当前局结束后再加入 |
 | 好友刷新后不见了 | 8 秒宽限期内刷新会自动恢复；超过 8 秒会判定离开并提前结算 |
-| 部署后打不开 | 查看 Render 日志；确认 Build/Start 命令正确、依赖安装无报错 |
+| 部署后打不开 | 查看平台日志；确认 Dockerfile / 启动命令正确、容器端口与 PORT 一致 |
 | 免费部署第一次很慢 | 平台休眠冷启动，等待即可 |
 
 ## 已知问题与说明
 
-- 本地测试均在同一台电脑的双浏览器窗口完成（创建/加入、双向移动同步、收集、满员拒绝、无效房间码、断线提示、刷新重连均通过）；**跨设备跨网络的公网联机需部署后按上述步骤自测**，代码层面与本地测试走完全相同的链路（同一 Socket.IO 服务、同一事件流）。
+- 联机链路已对**线上公网服务**做过自动化端到端测试（双模拟客户端，WebSocket 直连）：建房/加入、第三人拒绝、自动开赛、跳跃与状态双向转发、收集仲裁与防重复计数、断线通知与宽限结算，全部通过。
+- 本地双浏览器窗口测试（创建/加入、双向移动同步、收集、满员拒绝、无效房间码、断线提示、刷新重连）同样通过。
+- 建议你和好友各开一局真人实测验证手感与延迟。
 - 「再来一局」需要双方都点击才会重新开赛。
 - 多人竞速为公平起见没有暂停功能；按 Esc 两次可退出房间。
 - 无音效（原单机版即为无声，联机版保持一致）。
